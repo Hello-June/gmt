@@ -15,7 +15,7 @@
  *	Contact info: www.generic-mapping-tools.org
  *--------------------------------------------------------------------*/
 /*
- * script2verbatim.c strips svn keywords, comments etc. from example scripts
+ * script2verbatim.c removes comments and replaces -ps from example scripts
  *
  * Author:  Florian Wobbe
  * Date:    6-JAN-2015
@@ -25,64 +25,51 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "common_string.h"
 
 #define MAX_LINE_LEN 256
 #define FAILURE_PREFIX "script2verbatim: "
 
-int filter (char *line, unsigned strip_comments) {
-	/* return 0 if line contains a match, 1 otherwise */
-
-	/* filter lines with '[$]Id:' */
-	if ((strstr (line, "$Id:") != 0))
-		return 0;
-
-	/* filter lines with 'functions[.]sh'
-	 * if ((strstr (line, "functions.sh") != 0))
-	 *   return 0; */
-
-	/* filter lines with '^[ ]*#' */
-	if (strip_comments) {
-		size_t n = strspn (line, " #"); /* span ' ' and '#' */
-		while (n > 0) {
-			if (line[--n] == '#') /* rewind until '#' found */
-				return 0;
-		}
+int is_comment (char *line) {
+	/* return 1 if line is a comment line, 0 otherwise */
+	size_t n = strspn (line, " #");  /* span ' ' and '#' */
+	while (n > 0) {
+		if (line[--n] == '#') /* rewind until '#' found */
+			return 1;
 	}
-
-	/* line without match */
-	return 1;
+	/* not a comment line */
+	return 0;
 }
 
+
 int main (int argc, char *argv[]) {
-	int arg = 1, line_num = 0, strip_comments = 0;
+    	int i, nargs = 0, line_num = 0, strip_comments = 0, ps2pdf = 0;
 	FILE *fp_in, *fp_out;
 	char line[MAX_LINE_LEN];
 
-	if ( argc > 1 && (strcmp (argv[arg], "--strip-comments") == 0) ) {
-		strip_comments = 1;
-		++arg;
+	for (i = 1; i < argc; i++) {
+		if (strcmp (argv[i], "--strip-comments") == 0) strip_comments = 1;
+		else if (strcmp (argv[i], "--ps2pdf") == 0) ps2pdf = 1;
+		else	nargs++;
 	}
 
-	if (argc != arg + 2) {
-		fprintf (stderr, FAILURE_PREFIX "usage: script2verbatim [--strip-comments] input output\n");
+	if (nargs != 2) {
+		fprintf (stderr, FAILURE_PREFIX "usage: script2verbatim [--strip-comments] [--ps2pdf] input output\n");
 		return EXIT_FAILURE;
 	}
 
-	fp_in = fopen (argv[arg], "r");
-	if (fp_in == NULL) {
-		fprintf (stderr, FAILURE_PREFIX "error opening input file %s.\n", argv[arg]);
+	if ((fp_in = fopen (argv[argc-2], "r")) == NULL) {
+		fprintf (stderr, FAILURE_PREFIX "error opening input file %s.\n", argv[argc-2]);
 		return EXIT_FAILURE;
 	}
 
-	fp_out = fopen (argv[++arg], "w");
-	if (fp_out == NULL) {
-		fprintf (stderr, FAILURE_PREFIX "error opening output file %s.\n", argv[arg]);
+	if ((fp_out = fopen (argv[argc-1], "w")) == NULL) {
+		fprintf (stderr, FAILURE_PREFIX "error opening output file %s.\n", argv[argc-1]);
 		fclose (fp_in);
 		return EXIT_FAILURE;
 	}
 
 	/* Opening files succeeded */
-
 	while (fgets (line, MAX_LINE_LEN, fp_in) != NULL) {
 		size_t len = strlen (line);
 		++line_num;
@@ -92,7 +79,10 @@ int main (int argc, char *argv[]) {
 			fclose (fp_out);
 			return EXIT_FAILURE;
 		}
-		if (filter (line, strip_comments))
+		if (strip_comments && is_comment(line)) continue;
+		if (ps2pdf)
+			fputs (gmt_strrep(line, " -ps ", " -pdf "), fp_out);
+		else
 			fputs (line, fp_out);
 	}
 
